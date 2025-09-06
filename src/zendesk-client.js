@@ -6,8 +6,12 @@ import axios from 'axios';
         this.email = process.env.ZENDESK_EMAIL;
         this.apiToken = process.env.ZENDESK_API_TOKEN;
         
+        
+      }
+
+      _checkCredentials() {
         if (!this.subdomain || !this.email || !this.apiToken) {
-          console.warn('Zendesk credentials not found in environment variables. Please set ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, and ZENDESK_API_TOKEN.');
+          throw new Error('Zendesk credentials not configured. Please set ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, and ZENDESK_API_TOKEN environment variables.');
         }
       }
 
