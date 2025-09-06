@@ -26,9 +26,7 @@ import axios from 'axios';
 
       async request(method, endpoint, data = null, params = null) {
         try {
-          if (!this.subdomain || !this.email || !this.apiToken) {
-            throw new Error('Zendesk credentials not configured. Please set environment variables.');
-          }
+          this._checkCredentials();
 
           const url = `${this.getBaseUrl()}${endpoint}`;
           const headers = {
