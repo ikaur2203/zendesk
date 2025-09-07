@@ -12,6 +12,14 @@ const config = {
     }
 };
 
+// Validate required environment variables
+const requiredEnvVars = ['SQL_USER', 'SQL_PASSWORD', 'SQL_SERVER', 'SQL_DATABASE'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+    throw new Error(`Missing required SQL Server environment variables: ${missingVars.join(', ')}`);
+}
+
 // Create a connection pool
 const pool = new sql.ConnectionPool(config);
 const poolConnect = pool.connect();
@@ -29,18 +37,18 @@ pool.on('error', err => {
 async function executeQuery(query, params = {}) {
     try {
         await poolConnect; // Ensures that the pool has been created
-        
+
         const request = pool.request();
-        
+
         // Add parameters to the request
         Object.entries(params).forEach(([key, value]) => {
             request.input(key, value);
         });
-        
+
         const result = await request.query(query);
         return result.recordset;
     } catch (err) {
-        console.error('SQL Query Error:', err);
+        console.error(`SQL Query Error: ${err.message} | Query: ${query} | Params: ${JSON.stringify(params)}`);
         throw err;
     }
 }

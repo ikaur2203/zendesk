@@ -1,0 +1,25 @@
+{
+	"servers": {
+		"zendeskapi-mcp-server": {
+			"type": "stdio",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev"
+			],
+			"cwd": "${workspaceFolder}",
+			"watch": "src/**/*.js",
+			"dev": {
+				
+				"debug":{
+					"command": "npm",
+					"args": [
+						"run",
+						"inspect"
+					]
+				}
+			}
+		}
+	},
+	"inputs": []
+}
