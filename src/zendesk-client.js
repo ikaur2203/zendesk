@@ -260,6 +260,14 @@ class ZendeskClient {
   async listChats(params) {
     return this.request('GET', '/chats.json', null, params);
   }
+
+  // Custom Fields
+  async listCustomFields(params) {
+    return this.request('GET', '/ticket_fields.json', null, params);
+  }
+  async getCustomField(id) {
+    return this.request('GET', `/ticket_fields/${id}.json`);
+  }
 }
 
 export const zendeskClient = new ZendeskClient();

@@ -8,9 +8,8 @@
 				"dev"
 			],
 			"cwd": "${workspaceFolder}",
-			"watch": "src/**/*.js",
 			"dev": {
-				
+				"watch": "src/**/*.js",
 				"debug":{
 					"command": "npm",
 					"args": [

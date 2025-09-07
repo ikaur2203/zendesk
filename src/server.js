@@ -37,7 +37,7 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
       ...supportTools,
       ...talkTools,
       ...chatTools,
-      ...highestTicketCategoryTool
+      highestTicketCategoryTool
     ];
 
     // Register each tool with the server
