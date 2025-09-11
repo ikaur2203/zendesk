@@ -1,4 +1,13 @@
-const sql = require('mssql');
+import sql from 'mssql';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load environment variables
+dotenv.config({ path: join(__dirname, '..', '.env') });
 
 // SQL Server Configuration
 const config = {
@@ -34,7 +43,7 @@ pool.on('error', err => {
  * @param {Object} params - Optional parameters for the query
  * @returns {Promise<any>} - Query results
  */
-async function executeQuery(query, params = {}) {
+export async function executeQuery(query, params = {}) {
     try {
         await poolConnect; // Ensures that the pool has been created
 
@@ -56,7 +65,7 @@ async function executeQuery(query, params = {}) {
 /**
  * Close the SQL connection pool
  */
-async function closePool() {
+export async function closePool() {
     try {
         await pool.close();
     } catch (err) {
@@ -65,8 +74,5 @@ async function closePool() {
     }
 }
 
-module.exports = {
-    executeQuery,
-    closePool,
-    sql // Export sql for direct access to types if needed
-};
+// Export sql for direct access to types if needed
+export { sql };

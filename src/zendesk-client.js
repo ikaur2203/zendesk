@@ -268,6 +268,8 @@ class ZendeskClient {
   async getCustomField(id) {
     return this.request('GET', `/ticket_fields/${id}.json`);
   }
+
+  
 }
 
 export const zendeskClient = new ZendeskClient();

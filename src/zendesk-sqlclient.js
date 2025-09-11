@@ -1,10 +1,10 @@
-import { zendeskClient } from './zendesk-client';
-import { executeQuery } from './zendesk-sqlserver';
+import { zendeskClient } from './zendesk-client.js';
+import { executeQuery } from './zendesk-sqlserver.js';
 
 /**
  * Example function to integrate Zendesk API and SQL Server
  */
-async function syncZendeskTicketsToDatabase() {
+export async function syncZendeskTicketsToDatabase() {
     try {
         // Fetch tickets from Zendesk
         const tickets = await zendeskClient.listTickets();
@@ -29,14 +29,37 @@ async function syncZendeskTicketsToDatabase() {
     }
 }
 
-// Example usage
-syncZendeskTicketsToDatabase().catch(console.error);
-
-// Example usage of SQL Server module
-async function Get_Zendesk_Tickets() {
-    const query = 'EXEC [zendesk].[sp_GetAllTickets]';
-    const results = await executeQuery(query);
-    console.log(results);
+/**
+ * Get all Zendesk tickets from SQL Server
+ */
+export async function getZendeskTickets() {
+    try {
+        const query = 'EXEC [zendesk].[sp_GetAllTickets]';
+        const results = await executeQuery(query);
+        return results;
+    } catch (error) {
+        console.error('❌ Error getting tickets from database:', error);
+        throw error;
+    }
 }
 
-example().catch(console.error);
+/**
+ * Get IT tickets from SQL Server
+ */
+export async function getITTickets() {
+    try {
+        const query = `
+            SELECT t.*, o.name as organization_name 
+            FROM zendesk.tbl_Ticket t
+            JOIN zendesk.tbl_groupandorg o ON t.GroupId = o.SourceId
+            WHERE o.name LIKE '%IT%'
+            ORDER BY t.created DESC
+        `;
+        
+        const tickets = await executeQuery(query);
+        return tickets;
+    } catch (error) {
+        console.error('Error getting IT tickets:', error);
+        throw error;
+    }
+}
