@@ -183,30 +183,47 @@ export const sqlTools = [
     handler: async ({ days_back = 30 }) => {
       try {
         const query = `
-          WITH TicketStats AS (
+          WITH StatusLookup AS (
+            SELECT Id, Value, Title AS StatusName
+            FROM slgreen.tbl_lookup 
+            WHERE [Key] = '22407340' AND Active = 1
+          ),
+          PriorityLookup AS (
+            SELECT Id, Value, Title AS PriorityName  
+            FROM slgreen.tbl_lookup
+            WHERE [Key] = '22407360' AND Active = 1
+          ),
+          TicketStats AS (
             SELECT 
               COUNT(*) as total_tickets,
-              COUNT(CASE WHEN status = 'open' THEN 1 END) as open_tickets,
-              COUNT(CASE WHEN status = 'solved' THEN 1 END) as solved_tickets,
-              COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_tickets,
-              COUNT(CASE WHEN status = 'closed' THEN 1 END) as closed_tickets,
-              COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_tickets,
-              COUNT(CASE WHEN priority = 'high' THEN 1 END) as high_priority_tickets,
-              AVG(CASE WHEN status = 'solved' AND solved_at IS NOT NULL 
-                       THEN DATEDIFF(hour, created_at, solved_at) END) as avg_resolution_hours
-            FROM zendesk.tbl_Ticket
-            WHERE created_at >= DATEADD(day, -@days_back, GETDATE())
+              SUM(CASE WHEN s.StatusName = 'Open' THEN 1 ELSE 0 END) as open_tickets,
+              SUM(CASE WHEN s.StatusName = 'Solved' THEN 1 ELSE 0 END) as solved_tickets,
+              SUM(CASE WHEN s.StatusName = 'Pending' THEN 1 ELSE 0 END) as pending_tickets,
+              SUM(CASE WHEN s.StatusName = 'Closed' THEN 1 ELSE 0 END) as closed_tickets,
+              SUM(CASE WHEN s.StatusName = 'New' THEN 1 ELSE 0 END) as new_tickets,
+              SUM(CASE WHEN s.StatusName = 'On-hold' THEN 1 ELSE 0 END) as onhold_tickets,
+              SUM(CASE WHEN p.PriorityName = 'Urgent' THEN 1 ELSE 0 END) as urgent_tickets,
+              SUM(CASE WHEN p.PriorityName = 'High' THEN 1 ELSE 0 END) as high_priority_tickets,
+              SUM(CASE WHEN p.PriorityName = 'Normal' THEN 1 ELSE 0 END) as normal_priority_tickets,
+              SUM(CASE WHEN p.PriorityName = 'Low' THEN 1 ELSE 0 END) as low_priority_tickets,
+              AVG(CASE WHEN s.StatusName IN ('Solved','Closed') AND t.Modified IS NOT NULL 
+                       THEN DATEDIFF(hour, t.Created, t.Modified) END) as avg_resolution_hours
+            FROM zendesk.tbl_Ticket t
+            LEFT JOIN StatusLookup s ON t.StatusId = s.Id
+            LEFT JOIN PriorityLookup p ON t.PriorityId = p.Id
+            WHERE t.Created >= DATEADD(day, -@days_back, GETDATE())
           ),
           GroupStats AS (
             SELECT 
-              g.name as group_name,
-              COUNT(t.id) as ticket_count,
-              AVG(CASE WHEN t.status = 'solved' AND t.solved_at IS NOT NULL 
-                       THEN DATEDIFF(hour, t.created_at, t.solved_at) END) as avg_resolution_hours
+              g.Name as group_name,
+              COUNT(t.ZendeskId) as ticket_count,
+              AVG(CASE WHEN s.StatusName IN ('Solved','Closed') AND t.Modified IS NOT NULL 
+                       THEN DATEDIFF(hour, t.Created, t.Modified) END) as avg_resolution_hours
             FROM zendesk.tbl_Ticket t
-            LEFT JOIN zendesk.tbl_groupandorg g ON t.group_id = g.SourceId
-            WHERE t.created_at >= DATEADD(day, -@days_back, GETDATE())
-            GROUP BY g.name
+            LEFT JOIN zendesk.tbl_groupandorg g ON t.GroupId = g.SourceId
+            LEFT JOIN StatusLookup s ON t.StatusId = s.Id
+            WHERE t.Created >= DATEADD(day, -@days_back, GETDATE())
+            GROUP BY g.Name
           )
           SELECT 
             'Overall' as category,
@@ -215,23 +232,31 @@ export const sqlTools = [
             solved_tickets,
             pending_tickets,
             closed_tickets,
+            new_tickets,
+            onhold_tickets,
             urgent_tickets,
             high_priority_tickets,
+            normal_priority_tickets,
+            low_priority_tickets,
             avg_resolution_hours
           FROM TicketStats
           UNION ALL
           SELECT 
-            'By Group' as category,
+            CONCAT('Group: ', group_name) as category,
             ticket_count as total_tickets,
             NULL as open_tickets,
             NULL as solved_tickets,
             NULL as pending_tickets,
             NULL as closed_tickets,
+            NULL as new_tickets,
+            NULL as onhold_tickets,
             NULL as urgent_tickets,
             NULL as high_priority_tickets,
+            NULL as normal_priority_tickets,
+            NULL as low_priority_tickets,
             avg_resolution_hours
           FROM GroupStats
-          WHERE group_name IS NOT NULL
+          WHERE group_name IS NOT NULL AND ticket_count > 0
         `;
         
         const results = await executeQuery(query, { days_back });
@@ -264,54 +289,83 @@ export const sqlTools = [
     },
     handler: async ({ status, priority, group_name, organization_name, assignee_name, days_back = 30, limit = 100 }) => {
       try {
-        let whereConditions = ["t.created_at >= DATEADD(day, -@days_back, GETDATE())"];
+        let whereConditions = ["t.Created >= DATEADD(day, -@days_back, GETDATE())"];
         const params = { days_back, limit };
         
+        // Status filtering using lookup table names
         if (status) {
-          whereConditions.push("t.status = @status");
-          params.status = status;
+          const validStatuses = ['open', 'pending', 'on-hold', 'solved', 'closed', 'new'];
+          const statusValue = status.toLowerCase();
+          if (validStatuses.includes(statusValue)) {
+            // Convert common variations
+            let statusName = statusValue;
+            if (statusValue === 'on-hold') statusName = 'On-hold';
+            else statusName = statusValue.charAt(0).toUpperCase() + statusValue.slice(1);
+            
+            whereConditions.push("s.StatusName = @statusName");
+            params.statusName = statusName;
+          }
         }
         
+        // Priority filtering using lookup table names
         if (priority) {
-          whereConditions.push("t.priority = @priority");
-          params.priority = priority;
+          const validPriorities = ['low', 'normal', 'high', 'urgent'];
+          const priorityValue = priority.toLowerCase();
+          if (validPriorities.includes(priorityValue)) {
+            const priorityName = priorityValue.charAt(0).toUpperCase() + priorityValue.slice(1);
+            whereConditions.push("p.PriorityName = @priorityName");
+            params.priorityName = priorityName;
+          }
         }
         
         if (group_name) {
-          whereConditions.push("g.name LIKE @group_name");
+          whereConditions.push("g.Name LIKE @group_name");
           params.group_name = `%${group_name}%`;
         }
         
         if (organization_name) {
-          whereConditions.push("org.name LIKE @organization_name");
+          whereConditions.push("org.Name LIKE @organization_name");
           params.organization_name = `%${organization_name}%`;
         }
         
         if (assignee_name) {
-          whereConditions.push("u.name LIKE @assignee_name");
+          whereConditions.push("u.DisplayName LIKE @assignee_name");
           params.assignee_name = `%${assignee_name}%`;
         }
         
         const query = `
+          WITH StatusLookup AS (
+            SELECT Id, Value, Title AS StatusName
+            FROM slgreen.tbl_lookup 
+            WHERE [Key] = '22407340' AND Active = 1
+          ),
+          PriorityLookup AS (
+            SELECT Id, Value, Title AS PriorityName  
+            FROM slgreen.tbl_lookup
+            WHERE [Key] = '22407360' AND Active = 1
+          )
           SELECT TOP (@limit)
-            t.id,
-            t.subject,
-            t.status,
-            t.priority,
-            t.created_at,
-            t.updated_at,
-            t.solved_at,
-            g.name as group_name,
-            org.name as organization_name,
-            u.name as assignee_name,
-            req.name as requester_name
+            t.ZendeskId as id,
+            t.Subject as subject,
+            t.StatusId as status_id,
+            ISNULL(s.StatusName, 'Unknown') as status_name,
+            t.PriorityId as priority_id,
+            ISNULL(p.PriorityName, 'Unknown') as priority_name,
+            t.Created as created_at,
+            t.Modified as updated_at,
+            g.Name as group_name,
+            org.Name as organization_name,
+            u.DisplayName as assignee_name,
+            req.DisplayName as requester_name
           FROM zendesk.tbl_Ticket t
-          LEFT JOIN zendesk.tbl_groupandorg g ON t.group_id = g.SourceId
-          LEFT JOIN zendesk.tbl_groupandorg org ON t.organization_id = org.SourceId
-          LEFT JOIN zendesk.tbl_User u ON t.assignee_id = u.SourceId
-          LEFT JOIN zendesk.tbl_User req ON t.requester_id = req.SourceId
+          LEFT JOIN StatusLookup s ON t.StatusId = s.Id
+          LEFT JOIN PriorityLookup p ON t.PriorityId = p.Id
+          LEFT JOIN zendesk.tbl_groupandorg g ON t.GroupId = g.SourceId
+          LEFT JOIN zendesk.tbl_groupandorg org ON t.OrganizationId = org.SourceId
+          LEFT JOIN zendesk.tbl_User u ON t.AssigneeId = u.SourceId
+          LEFT JOIN zendesk.tbl_User req ON t.RequesterId = req.SourceId
           WHERE ${whereConditions.join(' AND ')}
-          ORDER BY t.created_at DESC
+          ORDER BY t.Created DESC
         `;
         
         const results = await executeQuery(query, params);

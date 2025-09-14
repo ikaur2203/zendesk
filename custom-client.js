@@ -1,6 +1,5 @@
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { spawn } from 'child_process';
 import { OpenAI } from 'openai';
 import dotenv from 'dotenv';
 
@@ -9,7 +8,6 @@ dotenv.config();
 class MCPZendeskClient {
   constructor() {
     this.mcpClient = null;
-    this.serverProcess = null;
     this.availableTools = [];
     
     // Initialize OpenAI client (works with Azure OpenAI too)
@@ -28,10 +26,11 @@ class MCPZendeskClient {
     try {
       console.log('Starting Zendesk MCP server...');
       
-      // Start the MCP server process
-      this.serverProcess = spawn('node', ['src/index.js'], {
-        cwd: process.env.MCP_SERVER_PATH || './zendesk-mcp-server',
-        stdio: ['pipe', 'pipe', 'pipe'],
+      // Create transport and client
+      const transport = new StdioClientTransport({
+        command: 'node',
+        args: ['src/index.js'],
+        cwd: process.env.MCP_SERVER_PATH || process.cwd(),
         env: {
           ...process.env,
           ZENDESK_SUBDOMAIN: process.env.ZENDESK_SUBDOMAIN,
@@ -42,12 +41,6 @@ class MCPZendeskClient {
           SQL_USER: process.env.SQL_USER,
           SQL_PASSWORD: process.env.SQL_PASSWORD
         }
-      });
-
-      // Create transport and client
-      const transport = new StdioClientTransport({
-        stdin: this.serverProcess.stdin,
-        stdout: this.serverProcess.stdout
       });
 
       this.mcpClient = new Client({
@@ -77,9 +70,6 @@ class MCPZendeskClient {
   async stopMCPServer() {
     if (this.mcpClient) {
       await this.mcpClient.close();
-    }
-    if (this.serverProcess) {
-      this.serverProcess.kill();
     }
     console.log('🛑 MCP server stopped');
   }
