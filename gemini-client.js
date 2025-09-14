@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { spawn } from 'child_process';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -9,7 +8,6 @@ dotenv.config();
 class GeminiMCPClient {
   constructor() {
     this.mcpClient = null;
-    this.serverProcess = null;
     this.availableTools = [];
     
     // Initialize Gemini client
@@ -23,9 +21,11 @@ class GeminiMCPClient {
     try {
       console.log('🚀 Starting Zendesk MCP server for Gemini...');
       
-      this.serverProcess = spawn('node', ['src/index.js'], {
-        cwd: process.env.MCP_SERVER_PATH || './zendesk-mcp-server',
-        stdio: ['pipe', 'pipe', 'pipe'],
+      // Create transport using the working pattern
+      const transport = new StdioClientTransport({
+        command: 'node',
+        args: ['src/index.js'],
+        cwd: process.env.MCP_SERVER_PATH || process.cwd(),
         env: {
           ...process.env,
           ZENDESK_SUBDOMAIN: process.env.ZENDESK_SUBDOMAIN,
@@ -36,11 +36,6 @@ class GeminiMCPClient {
           SQL_USER: process.env.SQL_USER,
           SQL_PASSWORD: process.env.SQL_PASSWORD
         }
-      });
-
-      const transport = new StdioClientTransport({
-        stdin: this.serverProcess.stdin,
-        stdout: this.serverProcess.stdout
       });
 
       this.mcpClient = new Client({
@@ -70,9 +65,6 @@ class GeminiMCPClient {
     if (this.mcpClient) {
       await this.mcpClient.close();
     }
-    if (this.serverProcess) {
-      this.serverProcess.kill();
-    }
     console.log('🛑 MCP server stopped');
   }
 
@@ -91,15 +83,53 @@ class GeminiMCPClient {
 
   // Convert MCP tools to function descriptions for Gemini
   getGeminiFunctionDeclarations() {
-    return this.availableTools.map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: {
-        type: "object",
-        properties: tool.inputSchema?.properties || {},
-        required: tool.inputSchema?.required || []
+    return this.availableTools.map(tool => {
+      // Clean the schema to remove unsupported properties
+      const cleanSchema = this.cleanSchemaForGemini(tool.inputSchema || {});
+      
+      return {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: "object",
+          properties: cleanSchema.properties || {},
+          required: cleanSchema.required || []
+        }
+      };
+    });
+  }
+
+  // Clean schema by removing additionalProperties and other unsupported fields
+  cleanSchemaForGemini(schema) {
+    if (!schema || typeof schema !== 'object') {
+      return { type: "object", properties: {}, required: [] };
+    }
+
+    const cleaned = JSON.parse(JSON.stringify(schema));
+    
+    // Recursively clean the schema
+    this.removeUnsupportedProperties(cleaned);
+    
+    return cleaned;
+  }
+
+  removeUnsupportedProperties(obj) {
+    if (typeof obj !== 'object' || obj === null) {
+      return;
+    }
+
+    // Remove additionalProperties and other unsupported fields
+    const unsupportedFields = ['additionalProperties', '$ref', 'oneOf', 'anyOf', 'allOf'];
+    unsupportedFields.forEach(field => {
+      delete obj[field];
+    });
+
+    // Recursively clean nested objects
+    Object.values(obj).forEach(value => {
+      if (typeof value === 'object' && value !== null) {
+        this.removeUnsupportedProperties(value);
       }
-    }));
+    });
   }
 
   async chatWithGemini(message, useTools = true) {
