@@ -192,7 +192,7 @@ async function geminiExample() {
 export default GeminiMCPClient;
 
 // Environment variables needed:
-// GOOGLE_API_KEY=AIzaSyA7b2vTqczMySO82Dav-EGecpUlOfb9vvI
+// GOOGLE_API_KEY=
 // GEMINI_MODEL=gemini-1.5-pro (optional)
 // MCP_SERVER_PATH=/path/to/zendesk-mcp-server
 // Plus all Zendesk and SQL environment variables

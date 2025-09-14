@@ -11,19 +11,24 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "inspect": "npx -y @modelcontextprotocol/inspector node src/index.js",
+    "test": "node test-suite.js",
+    "test:health": "node health-check.js",
+    "test:performance": "node test-performance.js",
+    "test:mcp": "node test-mcp-integration.js",
+    "test:ai": "node test-ai-integration.js",
     "test:db": "node test-db.js",
     "start:custom": "node custom-client.js",
     "start:gemini": "node gemini-client.js",
     "start:copilot": "node copilot-bridge.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.15.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.6.2",
     "dotenv": "^16.6.1",
+    "express": "^4.18.0",
     "mssql": "^11.0.1",
-    "zod": "^3.22.4",
     "openai": "^4.0.0",
-    "@google/generative-ai": "^0.15.0",
-    "express": "^4.18.0"
+    "zod": "^3.22.4"
   }
 }

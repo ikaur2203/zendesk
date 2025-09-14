@@ -1,4 +1,4 @@
-// GitHub Copilot Studio Integration with MCP
+// Fixed GitHub Copilot Studio Integration with MCP
 // This demonstrates how to integrate your Zendesk MCP server with Microsoft Copilot Studio
 
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -14,27 +14,17 @@ class CopilotMCPBridge {
     this.availableTools = [];
     this.app = express();
     this.app.use(express.json());
+    this.mcpConnected = false;
   }
 
   async startMCPServer() {
     try {
       console.log('🚀 Starting Zendesk MCP server for Copilot...');
       
-      // Use StdioClientTransport with command/args like our working clients
+      // Use the same transport configuration that works in our other clients
       const transport = new StdioClientTransport({
         command: 'node',
-        args: ['src/index.js'],
-        cwd: process.env.MCP_SERVER_PATH || process.cwd(),
-        env: {
-          ...process.env,
-          ZENDESK_SUBDOMAIN: process.env.ZENDESK_SUBDOMAIN,
-          ZENDESK_EMAIL: process.env.ZENDESK_EMAIL,
-          ZENDESK_API_TOKEN: process.env.ZENDESK_API_TOKEN,
-          SQL_SERVER: process.env.SQL_SERVER,
-          SQL_DATABASE: process.env.SQL_DATABASE,
-          SQL_USER: process.env.SQL_USER,
-          SQL_PASSWORD: process.env.SQL_PASSWORD
-        }
+        args: ['src/index.js']
       });
 
       this.mcpClient = new Client({
@@ -51,16 +41,26 @@ class CopilotMCPBridge {
 
       const { tools } = await this.mcpClient.listTools();
       this.availableTools = tools;
+      this.mcpConnected = true;
       console.log(`📋 Available tools: ${tools.map(t => t.name).join(', ')}`);
 
       return true;
     } catch (error) {
-      console.error('❌ Error starting MCP server:', error);
+      console.error('❌ Error starting MCP server:', error.message);
+      console.log('⚠️  Continuing without MCP connection - webhook server will still work for testing');
+      this.mcpConnected = false;
       return false;
     }
   }
 
   async callTool(toolName, args = {}) {
+    if (!this.mcpConnected) {
+      return { 
+        error: 'MCP server not connected. Please check MCP server configuration.',
+        available: false
+      };
+    }
+    
     try {
       const result = await this.mcpClient.callTool({
         name: toolName,
@@ -81,6 +81,17 @@ class CopilotMCPBridge {
         
         console.log(`📥 Received action: ${action} with params:`, parameters);
         
+        if (!this.mcpConnected) {
+          res.json({
+            conversation_id: conversation_id,
+            success: false,
+            data: null,
+            error: 'MCP server not connected. Please restart the bridge.',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        
         let result;
         
         switch (action) {
@@ -95,6 +106,8 @@ class CopilotMCPBridge {
               status: parameters.status,
               priority: parameters.priority,
               group_name: parameters.group_name,
+              assignee_name: parameters.assignee_name,
+              organization_name: parameters.organization_name,
               days_back: parameters.days_back || 30,
               limit: parameters.limit || 50
             });
@@ -118,6 +131,10 @@ class CopilotMCPBridge {
               query: parameters.query,
               parameters: parameters.query_params || {}
             });
+            break;
+            
+          case 'sync_tickets':
+            result = await this.callTool('sync_tickets_to_database');
             break;
             
           default:
@@ -151,9 +168,10 @@ class CopilotMCPBridge {
     this.app.get('/health', (req, res) => {
       res.json({
         status: 'healthy',
-        mcp_connected: !!this.mcpClient,
+        mcp_connected: this.mcpConnected,
         available_tools: this.availableTools.length,
-        timestamp: new Date().toISOString()
+        server_time: new Date().toISOString(),
+        tools: this.mcpConnected ? this.availableTools.map(t => t.name) : []
       });
     });
 
@@ -162,52 +180,89 @@ class CopilotMCPBridge {
       const actions = [
         {
           name: 'get_ticket_analytics',
-          description: 'Get comprehensive ticket analytics',
+          description: 'Get comprehensive ticket analytics for specified time period',
           parameters: {
-            days_back: { type: 'number', required: false, description: 'Number of days to look back' }
-          }
+            days_back: { type: 'number', required: false, description: 'Number of days to look back (default: 30)' }
+          },
+          example: { action: 'get_ticket_analytics', parameters: { days_back: 7 } }
         },
         {
           name: 'search_tickets',
           description: 'Search tickets with various criteria',
           parameters: {
-            status: { type: 'string', required: false, description: 'Ticket status' },
-            priority: { type: 'string', required: false, description: 'Ticket priority' },
-            group_name: { type: 'string', required: false, description: 'Group name' },
-            days_back: { type: 'number', required: false, description: 'Days to look back' },
-            limit: { type: 'number', required: false, description: 'Max results' }
-          }
+            status: { type: 'string', required: false, description: 'Ticket status (open, closed, pending, etc.)' },
+            priority: { type: 'string', required: false, description: 'Ticket priority (low, normal, high, urgent)' },
+            group_name: { type: 'string', required: false, description: 'Group name filter' },
+            assignee_name: { type: 'string', required: false, description: 'Assignee name filter' },
+            organization_name: { type: 'string', required: false, description: 'Organization name filter' },
+            days_back: { type: 'number', required: false, description: 'Days to look back (default: 30)' },
+            limit: { type: 'number', required: false, description: 'Max results (default: 50)' }
+          },
+          example: { action: 'search_tickets', parameters: { status: 'open', priority: 'high', limit: 10 } }
         },
         {
-          name: 'execute_procedure',
-          description: 'Execute a stored procedure',
-          parameters: {
-            procedure_name: { type: 'string', required: true, description: 'Stored procedure name' },
-            procedure_params: { type: 'object', required: false, description: 'Procedure parameters' }
-          }
+          name: 'sync_tickets',
+          description: 'Sync latest tickets from Zendesk to database',
+          parameters: {},
+          example: { action: 'sync_tickets', parameters: {} }
         },
         {
           name: 'get_schema',
           description: 'Get database schema information',
           parameters: {
-            object_type: { type: 'string', required: false, description: 'Type: tables, views, procedures, all' }
-          }
+            object_type: { type: 'string', required: false, description: 'Type: tables, views, procedures, all (default: all)' }
+          },
+          example: { action: 'get_schema', parameters: { object_type: 'tables' } }
         },
         {
           name: 'custom_query',
-          description: 'Execute a custom SQL query (SELECT only)',
+          description: 'Execute a custom SQL query (SELECT only for security)',
           parameters: {
-            query: { type: 'string', required: true, description: 'SQL query to execute' },
-            query_params: { type: 'object', required: false, description: 'Query parameters' }
-          }
+            query: { type: 'string', required: true, description: 'SQL query to execute (SELECT statements only)' },
+            query_params: { type: 'object', required: false, description: 'Query parameters for parameterized queries' }
+          },
+          example: { action: 'custom_query', parameters: { query: 'SELECT COUNT(*) as total FROM zendesk.tbl_Ticket WHERE Created >= DATEADD(day, -7, GETDATE())' } }
         }
       ];
       
       res.json({
-        actions: actions,
         webhook_url: `${req.protocol}://${req.get('host')}/webhook/copilot`,
-        available_tools: this.availableTools.map(t => ({ name: t.name, description: t.description }))
+        mcp_connected: this.mcpConnected,
+        available_actions: actions,
+        available_mcp_tools: this.mcpConnected ? this.availableTools.map(t => ({ 
+          name: t.name, 
+          description: t.description 
+        })) : [],
+        usage_example: {
+          url: `${req.protocol}://${req.get('host')}/webhook/copilot`,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            action: 'get_ticket_analytics',
+            parameters: { days_back: 7 },
+            conversation_id: 'test-conversation-123'
+          }
+        }
       });
+    });
+
+    // Test endpoint
+    this.app.post('/test', async (req, res) => {
+      try {
+        const result = await this.callTool('get_zendesk_ticket_analytics', { days_back: 1 });
+        res.json({
+          test: 'MCP Bridge Test',
+          mcp_connected: this.mcpConnected,
+          result: result,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        res.status(500).json({
+          test: 'MCP Bridge Test',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
     });
   }
 
@@ -219,6 +274,8 @@ class CopilotMCPBridge {
         console.log(`🌐 Copilot webhook server running on port ${port}`);
         console.log(`📡 Webhook URL: http://localhost:${port}/webhook/copilot`);
         console.log(`📋 Available actions: http://localhost:${port}/actions`);
+        console.log(`🔍 Health check: http://localhost:${port}/health`);
+        console.log(`🧪 Test endpoint: http://localhost:${port}/test`);
         resolve();
       });
     });
@@ -238,12 +295,15 @@ async function startCopilotBridge() {
   
   try {
     await bridge.startMCPServer();
-    await bridge.startWebhookServer(3000);
+    await bridge.startWebhookServer(3001);
     
     console.log('\n✅ Copilot MCP Bridge is ready!');
     console.log('\n📋 Configuration for Copilot Studio:');
-    console.log('Webhook URL: http://localhost:3000/webhook/copilot');
-    console.log('Available Actions: http://localhost:3000/actions');
+    console.log('Webhook URL: http://localhost:3001/webhook/copilot');
+    console.log('Actions Config: http://localhost:3001/actions');
+    console.log('\n💡 Quick Test Commands:');
+    console.log('  curl http://localhost:3001/health');
+    console.log('  curl -X POST http://localhost:3001/test');
     
     // Keep the process running
     process.on('SIGINT', async () => {
