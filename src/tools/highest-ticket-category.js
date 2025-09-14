@@ -6,7 +6,8 @@ export const highestTicketCategoryTool = {
   schema: {}, // Simplified schema to avoid validation issues
   handler: async (params = {}) => {
     try {
-      console.log('Handler called with params:', params); // Debug input
+      // Debug input - commented out to avoid MCP protocol issues
+      // console.log('Handler called with params:', params);
 
       // Fetch all tickets
       let tickets = [];
@@ -14,7 +15,8 @@ export const highestTicketCategoryTool = {
       let result;
 
       do {
-        console.log(`Fetching tickets page ${page}`); // Debug API calls
+        // Debug API calls - commented out to avoid MCP protocol issues  
+        // console.log(`Fetching tickets page ${page}`);
         result = await zendeskClient.listTickets({ page, per_page: 100 });
         if (!result || !Array.isArray(result.tickets)) {
           throw new Error("Invalid API response: tickets array not found");
@@ -26,7 +28,8 @@ export const highestTicketCategoryTool = {
         }
       } while (result.next_page);
 
-      console.log(`Total tickets fetched: ${tickets.length}`); // Debug ticket count
+      // Debug ticket count - commented out to avoid MCP protocol issues
+      // console.log(`Total tickets fetched: ${tickets.length}`);
 
       if (tickets.length === 0) {
         return {
@@ -42,7 +45,8 @@ export const highestTicketCategoryTool = {
         categoryCounts[category] = (categoryCounts[category] || 0) + 1;
       });
 
-      console.log("Category counts:", categoryCounts); // Debug category counts
+      // Debug category counts - commented out to avoid MCP protocol issues
+      // console.log("Category counts:", categoryCounts);
 
       // Calculate percentages
       const totalTickets = tickets.length;
@@ -58,7 +62,8 @@ export const highestTicketCategoryTool = {
         { category: null, percentage: 0 }
       );
 
-      console.log("Highest category:", highestCategory); // Debug result
+      // Debug result - commented out to avoid MCP protocol issues
+      // console.log("Highest category:", highestCategory);
 
       return {
         content: [
@@ -73,7 +78,8 @@ export const highestTicketCategoryTool = {
         ]
       };
     } catch (error) {
-      console.error("Error in highestTicketCategoryTool:", error); // Debug error
+      // Debug error - commented out to avoid MCP protocol issues
+      // console.error("Error in highestTicketCategoryTool:", error);
       return {
         content: [{ type: "text", text: `Error calculating highest ticket category: ${error.message}` }],
         isError: true
@@ -114,4 +120,4 @@ export function categorizeTicketsBySubject(tickets) {
 // Process the 213 tickets assigned to the Business Application group
 const tickets = [/* Array of 213 tickets */]; // Replace with actual ticket data
 const categorizedData = categorizeTicketsBySubject(tickets);
-console.log('Categorized Data:', categorizedData);
+// console.log('Categorized Data:', categorizedData); // Commented out to avoid MCP protocol issues

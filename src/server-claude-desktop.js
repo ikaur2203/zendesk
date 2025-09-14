@@ -21,8 +21,73 @@ import { highestTicketCategoryTool } from './tools/highest-ticket-category.js';
 const server = new McpServer({
   name: "Zendesk API",
   version: "1.0.0",
-  description: "MCP Server for interacting with the Zendesk API and SQL Server database"
+  description: "MCP Server for interacting with the Zendesk API"
 });
+
+// Helper function to ensure consistent content format for Claude Desktop
+function formatContent(data) {
+  try {
+    // Ensure we always return an array of content objects
+    if (!data) {
+      return [{ type: "text", text: "No data available" }];
+    }
+    
+    // If it's already a proper content array, validate and return
+    if (Array.isArray(data) && data.every(item => item.type && item.text)) {
+      return data;
+    }
+    
+    // Convert various data formats to consistent content format
+    let textContent;
+    if (typeof data === 'string') {
+      textContent = data;
+    } else if (typeof data === 'object') {
+      // Limit large JSON responses to prevent token overflow
+      const jsonString = JSON.stringify(data, null, 2);
+      if (jsonString.length > 50000) { // Limit to ~50KB
+        const truncated = jsonString.substring(0, 47000);
+        const lastNewline = truncated.lastIndexOf('\n');
+        textContent = truncated.substring(0, lastNewline) + '\n\n... [Response truncated due to size]';
+      } else {
+        textContent = jsonString;
+      }
+    } else {
+      textContent = String(data);
+    }
+    
+    return [{ type: "text", text: textContent }];
+  } catch (error) {
+    return [{ type: "text", text: `Error formatting content: ${error.message}` }];
+  }
+}
+
+// Wrapper function to ensure all tool handlers return consistent format
+function wrapToolHandler(originalHandler) {
+  return async (...args) => {
+    try {
+      const result = await originalHandler(...args);
+      
+      // Ensure consistent response format
+      if (result && result.content) {
+        return {
+          content: formatContent(result.content),
+          isError: result.isError || false
+        };
+      }
+      
+      // If result doesn't have content property, wrap it
+      return {
+        content: formatContent(result),
+        isError: false
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Tool execution error: ${error.message}` }],
+        isError: true
+      };
+    }
+  };
+}
 
 // Register all tools (Zendesk API only - no SQL tools)
 const allTools = [
@@ -44,13 +109,13 @@ const allTools = [
   /* ...sqlTools, // Add SQL tools here when database is ready */
 ];
 
-// Register each tool with the server
+// Register each tool with the server using wrapped handlers
 allTools.forEach(tool => {
   server.tool(
     tool.name,
     tool.schema,
-    tool.handler,
-    { description: tool.description }
+    wrapToolHandler(tool.handler),
+    { description: tool.description || `Tool: ${tool.name}` }
   );
 });
 
@@ -75,9 +140,7 @@ server.resource(
       "chat": "Chat API allows you to manage Zendesk Chat conversations.\nEndpoints: GET /api/v2/chats, etc.",
       "highest_ticket_category": "This tool analyzes tickets to determine the category with the highest number of tickets.\nIt helps identify common issues and areas for improvement.",
       "custom_fields": "Custom Fields API allows you to create and manage custom fields for tickets, users, and organizations.\nEndpoints: GET /api/v2/ticket_fields, etc.",
-/*       "sql": "SQL Server integration allows you to sync and query Zendesk data from your database.\nOperations: Sync tickets, query database, get statistics, etc.",
- */      
-      "overview": "The Zendesk API is a RESTful API that uses JSON for serialization. It provides access to Zendesk Support, Talk, Chat, and Guide products, plus SQL Server integration."
+      "overview": "The Zendesk API is a RESTful API that uses JSON for serialization. It provides access to Zendesk Support, Talk, Chat, and Guide products."
     };
 
     if (!section || section === "all") {

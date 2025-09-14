@@ -41,17 +41,18 @@ if (missingVars.length > 0) {
     process.exit(1);
 }
 
-console.log('✅ Environment variables loaded successfully');
-console.log(`📡 Connecting to: ${process.env.ZENDESK_SUBDOMAIN}.zendesk.com`);
+// Remove console.log statements to avoid MCP protocol parsing issues
+// console.log('✅ Environment variables loaded successfully');
+// console.log(`📡 Connecting to: ${process.env.ZENDESK_SUBDOMAIN}.zendesk.com`);
 
 // Now import everything else after env vars are loaded
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { server } from './server.js';
 
-console.log('🚀 Starting Zendesk API MCP server...');
+// console.log('🚀 Starting Zendesk API MCP server...');
 
 // Start the server
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-console.log('✨ Zendesk MCP server is running!'); 
+// console.log('✨ Zendesk MCP server is running!'); 

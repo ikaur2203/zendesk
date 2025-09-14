@@ -1,0 +1,15 @@
+﻿{
+  "mcpServers": {
+    "zendesk-minimal": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\IKaur\\Documents\\Projects\\MCP\\zendesk-mcp-server\\src\\index-minimal.js"
+      ],
+      "env": {
+        "ZENDESK_SUBDOMAIN": "slgreen",
+        "ZENDESK_EMAIL": "bill.hand@slgreen.com",
+        "ZENDESK_API_TOKEN": "PlO7xgouIRidDfzC2vZMy75jQ3VQxTftguEW6d5x"
+      }
+    }
+  }
+}
